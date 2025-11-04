@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Player, Enemy, Projectile, ExperienceOrb, LevelUpOption, Attribute as AttrEnum, Vector2D, Turret, SaveData, PlayerWeapon } from './types';
+import type { Player, Enemy, Projectile, ExperienceOrb, LevelUpOption, Attribute as AttrEnum, Vector2D, Turret, SaveData, PlayerWeapon, StageData } from './types';
 import { GameStatus, Attribute } from './types';
 import { useGameLoop } from './hooks/useGameLoop';
 import { PLAYER_SIZE, GAME_TICK_RATE, XP_BASE, XP_GROWTH, FLASH_DURATION, ORB_SIZE } from './constants';
@@ -15,6 +13,7 @@ import GameUI from './components/GameUI';
 import LevelUpModal from './components/LevelUpModal';
 import StartScreen from './components/StartScreen';
 import GameOverScreen from './components/GameOverScreen';
+import StageSelectScreen from './components/StageSelectScreen';
 
 type AimDirection = 'up' | 'down' | 'left' | 'right' | 'none';
 type AnimationDirection = 'idle' | 'up' | 'down' | 'left' | 'right';
@@ -46,6 +45,7 @@ const App: React.FC = () => {
     const [camera, setCamera] = useState({ x: 0, y: 0 });
     const [levelUpOptions, setLevelUpOptions] = useState<{attribute: LevelUpOption<AttrEnum>[], weapon: LevelUpOption<string>[]}>({attribute: [], weapon: []});
     const [saveData, setSaveData] = useState<SaveData | null>(null);
+    const [selectedCharacter, setSelectedCharacter] = useState<{charId: string, weaponId: string} | null>(null);
     const [animationState, setAnimationState] = useState({
         frame: 0,
         direction: 'idle' as AnimationDirection,
@@ -54,7 +54,7 @@ const App: React.FC = () => {
 
     const keysPressed = useRef<Record<string, boolean>>({});
     const mousePosition = useRef({ x: 0, y: 0 });
-    const stage = STAGES.forest;
+    const stageRef = useRef<StageData | null>(null);
     const stageTimeouts = useRef<number[]>([]);
     const nextWaveIndex = useRef(0);
     
@@ -79,8 +79,16 @@ const App: React.FC = () => {
         }
     }, [gameStatus, player, gameTime, saveData]);
 
-    const initializeGame = useCallback((characterId: string, weaponId: string) => {
+    const handleCharacterSelect = useCallback((charId: string, weaponId: string) => {
+        setSelectedCharacter({ charId, weaponId });
+        setGameStatus(GameStatus.StageSelect);
+    }, []);
+
+    const initializeGame = useCallback((characterId: string, weaponId: string, stageId: string) => {
         const characterData = CHARACTERS[characterId];
+        const stageData = STAGES[stageId];
+        stageRef.current = stageData;
+        
         const startingWeaponId = weaponId;
 
         if (!startingWeaponId || !WEAPONS[startingWeaponId]) {
@@ -128,6 +136,12 @@ const App: React.FC = () => {
         stageTimeouts.current = [];
         nextWaveIndex.current = 0;
     }, []);
+    
+    const handleStageSelect = useCallback((stageId: string) => {
+        if (selectedCharacter) {
+            initializeGame(selectedCharacter.charId, selectedCharacter.weaponId, stageId);
+        }
+    }, [selectedCharacter, initializeGame]);
 
     const activateHeroicSkill = useCallback(() => {
         if (!player || player.heroicGauge < player.heroicGaugeMax || player.isHeroicSkillActive) return;
@@ -589,6 +603,8 @@ const App: React.FC = () => {
 
 
         // 4. Enemy Spawning
+        const stage = stageRef.current;
+        if (!stage) return;
         while (nextWaveIndex.current < stage.spawnWaves.length && newGameTime >= stage.spawnWaves[nextWaveIndex.current].time) {
             const wave = stage.spawnWaves[nextWaveIndex.current];
             for (let i = 0; i < wave.count; i++) {
@@ -759,7 +775,7 @@ const App: React.FC = () => {
     const worldHeight = 3000;
     
     // RENDER LOGIC
-    if (!player && gameStatus !== GameStatus.StartScreen) return <div>Loading...</div>;
+    if (!player && gameStatus !== GameStatus.StartScreen && gameStatus !== GameStatus.StageSelect) return <div>Loading...</div>;
 
     const renderProjectile = (proj: Projectile) => {
         const key = proj.id;
@@ -789,12 +805,13 @@ const App: React.FC = () => {
 
     return (
         <div className="w-screen h-screen bg-green-800 relative overflow-hidden">
-            {gameStatus === GameStatus.StartScreen && <StartScreen onStart={initializeGame} saveData={saveData} />}
-            {gameStatus === GameStatus.GameOver && player && <GameOverScreen score={gameTime} onRestart={() => setGameStatus(GameStatus.StartScreen)} />}
+            {gameStatus === GameStatus.StartScreen && <StartScreen onCharacterSelect={handleCharacterSelect} saveData={saveData} />}
+            {gameStatus === GameStatus.StageSelect && <StageSelectScreen onSelectStage={handleStageSelect} onBack={() => setGameStatus(GameStatus.StartScreen)} />}
+            {gameStatus === GameStatus.GameOver && player && <GameOverScreen score={gameTime} onRestart={() => { setGameStatus(GameStatus.StartScreen); setPlayer(null); }} />}
             {gameStatus === GameStatus.LevelUpAttributes && <LevelUpModal mode="attribute" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
             {gameStatus === GameStatus.LevelUpWeapons && <LevelUpModal mode="weapon" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
             
-            {player && (
+            {player && gameStatus === GameStatus.Playing && (
             <>
                 <GameUI player={player} gameTime={gameTime} />
                 <div 

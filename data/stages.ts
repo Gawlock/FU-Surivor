@@ -3,7 +3,7 @@ import type { StageData } from '../types';
 export const STAGES: Record<string, StageData> = {
   forest: {
     id: 'forest',
-    name: 'The Whispering Forest',
+    name: 'Floresta de Rivendell',
     duration: 600, // 10 minutes
     spawnWaves: [
       // Waves now appear 25% faster

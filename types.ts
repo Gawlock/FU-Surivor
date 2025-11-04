@@ -1,5 +1,4 @@
 
-
 export interface Vector2D {
   x: number;
   y: number;
@@ -13,6 +12,7 @@ export interface GameObject {
 
 export enum GameStatus {
   StartScreen,
+  StageSelect,
   Playing,
   Paused,
   LevelUpAttributes,

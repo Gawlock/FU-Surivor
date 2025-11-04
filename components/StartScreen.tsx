@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { CHARACTERS } from '../data/characters';
 import { WEAPONS } from '../data/weapons';
@@ -6,16 +5,16 @@ import type { CharacterData, SaveData } from '../types';
 import { formatTime } from '../utils';
 
 interface StartScreenProps {
-  onStart: (characterId: string, weaponId: string) => void;
+  onCharacterSelect: (characterId: string, weaponId: string) => void;
   saveData: SaveData | null;
 }
 
-const StartScreen: React.FC<StartScreenProps> = ({ onStart, saveData }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ onCharacterSelect, saveData }) => {
   const [selectedChar, setSelectedChar] = useState<CharacterData | null>(null);
 
   const handleCharSelect = (char: CharacterData) => {
     if (char.initialWeaponId) {
-      onStart(char.id, char.initialWeaponId);
+      onCharacterSelect(char.id, char.initialWeaponId);
     } else {
       // This is the 'Test' character, move to weapon selection
       setSelectedChar(char);
@@ -40,7 +39,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, saveData }) => {
           {Object.values(WEAPONS).map(weapon => (
             <button
               key={weapon.id}
-              onClick={() => onStart(selectedChar.id, weapon.id)}
+              onClick={() => onCharacterSelect(selectedChar.id, weapon.id)}
               className="w-56 p-4 bg-gray-800 border-2 border-gray-600 rounded-lg text-center hover:bg-yellow-600 hover:border-yellow-400 transform hover:-translate-y-1 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
             >
               <div className="text-5xl mb-2">{weapon.icon}</div>
