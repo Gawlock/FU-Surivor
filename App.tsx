@@ -276,13 +276,17 @@ const App: React.FC = () => {
         setPlayer(p => {
             if(!p) return null;
             const existingWeapon = p.weapons.find(w => w.id === weaponId);
+            
             if (existingWeapon) {
                 const nextLevel = existingWeapon.level + 1;
+                if (nextLevel > WEAPONS[weaponId].levels.length) return p;
+
                 return {
                     ...p,
-                    weapons: p.weapons.map(w => w.id === weaponId ? { ...w, level: nextLevel } : w)
+                    weapons: p.weapons.map(w => w.id === weaponId ? { ...w, level: nextLevel } : w),
                 };
-            } else {
+
+            } else { // Adding a new weapon
                 const weaponData = WEAPONS[weaponId];
                 const weaponLevelData = weaponData.levels[0];
                 const newPlayerWeapon: PlayerWeapon = {
@@ -290,15 +294,17 @@ const App: React.FC = () => {
                     level: 1,
                     cooldown: weaponLevelData.cooldown,
                 };
+                
                 if (weaponLevelData.regenInterval) {
                     newPlayerWeapon.passiveCooldown = weaponLevelData.regenInterval;
                 }
                 if (weaponId === 'baralho_do_malandro') {
                     newPlayerWeapon.cooldown = 0;
                 }
+                
                 return {
                     ...p,
-                    weapons: [...p.weapons, newPlayerWeapon]
+                    weapons: [...p.weapons, newPlayerWeapon],
                 };
             }
         });
@@ -375,7 +381,7 @@ const App: React.FC = () => {
         
         setCamera({ x: player.position.x, y: player.position.y });
         
-        // 2. Weapon Firing & Deploying
+        // 2. Weapon Firing & Passive Effects
         const worldMouseX = mousePosition.current.x - window.innerWidth / 2 + player.position.x;
         const worldMouseY = mousePosition.current.y - window.innerHeight / 2 + player.position.y;
         const targetDirection = normalize({
@@ -392,6 +398,7 @@ const App: React.FC = () => {
                 const weaponData = WEAPONS[w.id];
                 const weaponLevelData = weaponData.levels[w.level - 1];
         
+                // HP Regen
                 if (weaponLevelData.hpRegen && weaponLevelData.regenInterval) {
                     let newPassiveCooldown = (w.passiveCooldown ?? weaponLevelData.regenInterval) - GAME_TICK_RATE;
                     if (newPassiveCooldown <= 0) {
@@ -400,6 +407,7 @@ const App: React.FC = () => {
                     }
                     return { ...w, passiveCooldown: newPassiveCooldown };
                 }
+
                 return w;
             });
 
@@ -410,7 +418,6 @@ const App: React.FC = () => {
                     const weaponLevel = weaponData.levels[w.level - 1];
                     let finalCooldown = weaponLevel.cooldown;
 
-                    // Heroic skill modifications
                     if (p.isHeroicSkillActive) {
                         if (p.characterId === 'kazu' && w.id === 'dragon_katana') finalCooldown = 50;
                         if (p.characterId === 'ito' && w.id === 'chefs_gloves') finalCooldown = 0;
@@ -452,7 +459,7 @@ const App: React.FC = () => {
                 ? { ...p.stats, currentHp: Math.min(p.stats.maxHp, p.stats.currentHp + hpFromRegen) }
                 : p.stats;
             
-            return {...p, stats: newStats, weapons: newWeapons};
+            return {...p, stats: newStats, weapons: newWeapons };
         });
 
         // 2.5. Turret Logic (Update and Fire)
@@ -557,17 +564,11 @@ const App: React.FC = () => {
                     return { ...p, position: newPosition };
                 }
                  if (p.customUpdate === 'fibonacci' && p.spawnPosition && p.currentAngle !== undefined && p.spawnTime) {
-                    // velocity.x = rotation speed in rad/sec
-                    // velocity.y = growth speed in px/sec
                     const rotationPerTick = p.velocity.x * (GAME_TICK_RATE / 1000); 
                     const growthPerTick = p.velocity.y * (GAME_TICK_RATE / 1000);
-
                     const newAngle = p.currentAngle + rotationPerTick;
-                    
-                    // elapsed time in ticks
                     const elapsedTicks = (now - p.spawnTime) / GAME_TICK_RATE;
                     const radius = elapsedTicks * growthPerTick;
-
                     return {
                         ...p,
                         position: {
@@ -583,7 +584,6 @@ const App: React.FC = () => {
                 // Default movement
                 return { ...p, position: { x: p.position.x + p.velocity.x, y: p.position.y + p.velocity.y } };
             });
-
             return updatedProjectiles.map(p => ({...p, lifespan: p.lifespan - GAME_TICK_RATE})).filter(p => p.lifespan > 0);
         });
 
@@ -608,132 +608,138 @@ const App: React.FC = () => {
             nextWaveIndex.current++;
         }
 
-        // 5. Collision Detection & State Updates
-        const damageMap: Map<string, { damage: number; sources: Set<string>; knockback: Vector2D }> = new Map();
-        const projectilesToRemove = new Set<string>();
+        // 5. Enemy Updates (Collision, Damage, Death) and Player Collision
+        setEnemies(currentEnemies => {
+            const damageMap: Map<string, { damage: number; sources: Set<string>; knockback: Vector2D }> = new Map();
+            const projectilesToRemove = new Set<string>();
 
-        // Aura Damage
-        const auraWeapon = player.weapons.find(w => WEAPONS[w.id].levels[w.level - 1].auraRadius);
-        if (auraWeapon) {
-            const weaponData = WEAPONS[auraWeapon.id];
-            const weaponLevelData = weaponData.levels[auraWeapon.level - 1];
-            const auraRadius = weaponLevelData.auraRadius!;
-            const auraDamagePerTick = (weaponLevelData.auraDamagePerSecond! * (GAME_TICK_RATE / 1000));
-            
-            for (const enemy of enemies) {
-                if (distance(player.position, enemy.position) < auraRadius) {
-                    if (!damageMap.has(enemy.id)) {
-                        damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
-                    }
-                    const enemyDamage = damageMap.get(enemy.id)!;
-                    enemyDamage.damage += auraDamagePerTick;
-                    enemyDamage.sources.add(auraWeapon.id);
-                    
-                    const knockbackStrength = 0.5;
-                    const knockbackDir = normalize({ x: enemy.position.x - player.position.x, y: enemy.position.y - player.position.y });
-                    enemyDamage.knockback.x += knockbackDir.x * knockbackStrength;
-                    enemyDamage.knockback.y += knockbackDir.y * knockbackStrength;
-                }
-            }
-        }
-
-        // Projectiles vs Enemies
-        for (const proj of projectiles) {
-            if (projectilesToRemove.has(proj.id) || proj.damage === 0) continue;
-            for (const enemy of enemies) {
-                if (isColliding(proj, enemy)) {
-                    if (!damageMap.has(enemy.id)) damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
-                    const enemyDamage = damageMap.get(enemy.id)!;
-                    enemyDamage.damage += proj.damage;
-                    enemyDamage.sources.add(proj.weaponId);
-
-                    if (proj.knockback) {
-                        const knockbackDir = normalize({ x: enemy.position.x - proj.position.x, y: enemy.position.y - proj.position.y });
-                        enemyDamage.knockback.x += knockbackDir.x * proj.knockback;
-                        enemyDamage.knockback.y += knockbackDir.y * proj.knockback;
-                    }
-
-                    if (!proj.piercing) {
-                        projectilesToRemove.add(proj.id);
-                        break;
+            // Aura Damage
+            const auraWeapon = player.weapons.find(w => WEAPONS[w.id].levels[w.level - 1].auraRadius);
+            if (auraWeapon) {
+                const weaponData = WEAPONS[auraWeapon.id];
+                const weaponLevelData = weaponData.levels[auraWeapon.level - 1];
+                const auraRadius = weaponLevelData.auraRadius!;
+                const auraDamagePerTick = (weaponLevelData.auraDamagePerSecond! * (GAME_TICK_RATE / 1000));
+                
+                for (const enemy of currentEnemies) {
+                    if (distance(player.position, enemy.position) < auraRadius) {
+                        if (!damageMap.has(enemy.id)) {
+                            damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
+                        }
+                        const enemyDamage = damageMap.get(enemy.id)!;
+                        enemyDamage.damage += auraDamagePerTick;
+                        enemyDamage.sources.add(auraWeapon.id);
+                        
+                        const knockbackStrength = 0.5;
+                        const knockbackDir = normalize({ x: enemy.position.x - player.position.x, y: enemy.position.y - player.position.y });
+                        enemyDamage.knockback.x += knockbackDir.x * knockbackStrength;
+                        enemyDamage.knockback.y += knockbackDir.y * knockbackStrength;
                     }
                 }
             }
-        }
-        setProjectiles(projs => projs.filter(p => !projectilesToRemove.has(p.id)));
-        
-        const bookWeapon = player.weapons.find(w => w.id === 'book_of_the_celestial');
-        const explosions = enemies.filter(e => { const d = damageMap.get(e.id); return d && e.currentHp - d.damage <= 0 && d.sources.has('book_of_the_celestial'); }).map(e => { const wl = bookWeapon ? WEAPONS.book_of_the_celestial.levels[bookWeapon.level - 1] : WEAPONS.book_of_the_celestial.levels[0]; return { position: e.position, damage: (wl.explosionDamage || 0) * player.stats.damageMultiplier, radius: wl.explosionRadius || 0 }; });
 
-        let newOrbsFromTick: ExperienceOrb[] = [];
-        let survivingEnemies: Enemy[] = [];
+            // Projectiles vs Enemies
+            for (const proj of projectiles) {
+                if (projectilesToRemove.has(proj.id) || proj.damage === 0) continue;
+                for (const enemy of currentEnemies) {
+                    if (isColliding(proj, enemy)) {
+                        if (!damageMap.has(enemy.id)) damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
+                        const enemyDamage = damageMap.get(enemy.id)!;
+                        enemyDamage.damage += proj.damage;
+                        enemyDamage.sources.add(proj.weaponId);
 
-        // Main enemy update loop
-        for (const e of enemies) {
-            const directDamage = damageMap.get(e.id)?.damage || 0;
-            let explosionDamage = 0;
-            if (explosions.length > 0) { for (const explosion of explosions) { if (distance(e.position, explosion.position) < explosion.radius) { explosionDamage += explosion.damage; } } }
-            
-            const totalDamage = directDamage + explosionDamage;
-            
-            if (e.currentHp - totalDamage <= 0) {
-                newOrbsFromTick.push({ id: `orb_${now}_${Math.random()}`, position: e.position, size: ORB_SIZE, value: ENEMIES[e.typeId].xp });
-            } else {
-                const direction = normalize({ x: player.position.x - e.position.x, y: player.position.y - e.position.y });
-                const knockback = damageMap.get(e.id)?.knockback || { x: 0, y: 0 };
-                survivingEnemies.push({ ...e, position: { x: e.position.x + direction.x * e.speed + knockback.x, y: e.position.y + direction.y * e.speed + knockback.y }, currentHp: e.currentHp - totalDamage, lastHitTimestamp: totalDamage > 0 ? now : e.lastHitTimestamp });
-            }
-        }
-        setEnemies(survivingEnemies);
-        
-        if(newOrbsFromTick.length > 0) {
-            setOrbs(o => [...o, ...newOrbsFromTick]);
-            setPlayer(p => p ? { ...p, heroicGauge: Math.min(p.heroicGauge + newOrbsFromTick.length * 8, p.heroicGaugeMax) } : null);
-        }
+                        if (proj.knockback) {
+                            const knockbackDir = normalize({ x: enemy.position.x - proj.position.x, y: enemy.position.y - proj.position.y });
+                            enemyDamage.knockback.x += knockbackDir.x * proj.knockback;
+                            enemyDamage.knockback.y += knockbackDir.y * proj.knockback;
+                        }
 
-        // Player vs Enemies collision
-        setPlayer(p => {
-            if (!p || (p.invulnerableUntil && now < p.invulnerableUntil)) return p;
-            let totalDamage = 0;
-            for (const e of survivingEnemies) { // Use already updated surviving enemies
-                if (isColliding(p, e)) {
-                    totalDamage += e.damage;
+                        if (!proj.piercing) {
+                            projectilesToRemove.add(proj.id);
+                            break;
+                        }
+                    }
                 }
             }
-            if (totalDamage > 0 && now > p.lastHitTimestamp + 500) { // 500ms invulnerability
-                const damageTaken = Math.max(1, totalDamage - p.stats.defense);
-                const newHp = p.stats.currentHp - damageTaken;
-                if (newHp <= 0) {
-                    setGameStatus(GameStatus.GameOver);
-                    return { ...p, stats: { ...p.stats, currentHp: 0 } };
+            setProjectiles(projs => projs.filter(p => !projectilesToRemove.has(p.id)));
+            
+            const bookWeapon = player.weapons.find(w => w.id === 'book_of_the_celestial');
+            const explosions = currentEnemies.filter(e => { const d = damageMap.get(e.id); return d && e.currentHp - d.damage <= 0 && d.sources.has('book_of_the_celestial'); }).map(e => { const wl = bookWeapon ? WEAPONS.book_of_the_celestial.levels[bookWeapon.level - 1] : WEAPONS.book_of_the_celestial.levels[0]; return { position: e.position, damage: (wl.explosionDamage || 0) * player.stats.damageMultiplier, radius: wl.explosionRadius || 0 }; });
+
+            let newOrbsFromTick: ExperienceOrb[] = [];
+            let survivingEnemies: Enemy[] = [];
+
+            // Main enemy update loop
+            for (const e of currentEnemies) {
+                const directDamage = damageMap.get(e.id)?.damage || 0;
+                let explosionDamage = 0;
+                if (explosions.length > 0) { for (const explosion of explosions) { if (distance(e.position, explosion.position) < explosion.radius) { explosionDamage += explosion.damage; } } }
+                
+                const totalDamage = directDamage + explosionDamage;
+                
+                if (e.currentHp - totalDamage <= 0) {
+                    newOrbsFromTick.push({ id: `orb_${now}_${Math.random()}`, position: e.position, size: ORB_SIZE, value: ENEMIES[e.typeId].xp });
+                } else {
+                    const direction = normalize({ x: player.position.x - e.position.x, y: player.position.y - e.position.y });
+                    const knockback = damageMap.get(e.id)?.knockback || { x: 0, y: 0 };
+                    survivingEnemies.push({ ...e, position: { x: e.position.x + direction.x * e.speed + knockback.x, y: e.position.y + direction.y * e.speed + knockback.y }, currentHp: e.currentHp - totalDamage, lastHitTimestamp: totalDamage > 0 ? now : e.lastHitTimestamp });
                 }
-                return { ...p, stats: { ...p.stats, currentHp: newHp }, lastHitTimestamp: now };
             }
-            return p;
+            
+            if(newOrbsFromTick.length > 0) {
+                setOrbs(o => [...o, ...newOrbsFromTick]);
+                setPlayer(p => p ? { ...p, heroicGauge: Math.min(p.heroicGauge + newOrbsFromTick.length * 8, p.heroicGaugeMax) } : null);
+            }
+            
+            // Player vs Enemies collision (using the calculated survivors for this tick)
+             setPlayer(p => {
+                if (!p || (p.invulnerableUntil && now < p.invulnerableUntil)) return p;
+                let totalPlayerDamage = 0;
+                for (const e of survivingEnemies) {
+                    if (isColliding(p, e)) {
+                        totalPlayerDamage += e.damage;
+                    }
+                }
+                if (totalPlayerDamage > 0 && now > p.lastHitTimestamp + 500) { // 500ms invulnerability
+                    const damageTaken = Math.max(1, totalPlayerDamage - p.stats.defense);
+                    const newHp = p.stats.currentHp - damageTaken;
+                    if (newHp <= 0) {
+                        setGameStatus(GameStatus.GameOver);
+                        return { ...p, stats: { ...p.stats, currentHp: 0 } };
+                    }
+                    return { ...p, stats: { ...p.stats, currentHp: newHp }, lastHitTimestamp: now };
+                }
+                return p;
+            });
+            
+            return survivingEnemies;
         });
 
-        // 6. Orb Collection
-        const orbsToCollect: string[] = [];
-        let xpGained = 0;
-        setOrbs(prevOrbs => prevOrbs.map(orb => {
+        // 6. Orb Collection & 7. XP and Level Up (Combined and Corrected)
+        const remainingOrbs: ExperienceOrb[] = [];
+        let totalXpGainedThisTick = 0;
+
+        for (const orb of orbs) {
             const direction = normalize({ x: player.position.x - orb.position.x, y: player.position.y - orb.position.y });
             const speed = 10;
             const newPos = {
                 x: orb.position.x + direction.x * speed,
                 y: orb.position.y + direction.y * speed
             };
-            if (distance(newPos, player.position) < player.size / 2) {
-                orbsToCollect.push(orb.id);
-                xpGained += orb.value;
-            }
-            return { ...orb, position: newPos };
-        }).filter(orb => !orbsToCollect.includes(orb.id)));
 
-        // 7. XP and Level Up
-        if (xpGained > 0) {
+            if (distance(newPos, player.position) < player.size / 2) {
+                totalXpGainedThisTick += orb.value;
+            } else {
+                remainingOrbs.push({ ...orb, position: newPos });
+            }
+        }
+
+        setOrbs(remainingOrbs);
+
+        if (totalXpGainedThisTick > 0) {
             setPlayer(p => {
                 if (!p) return null;
-                const newXp = p.xp + (xpGained * p.stats.xpMultiplier);
+                const newXp = p.xp + (totalXpGainedThisTick * p.stats.xpMultiplier);
                 if (newXp >= p.xpToNextLevel) {
                     const newLevel = p.level + 1;
                     const newXpToNext = Math.floor(p.xpToNextLevel * XP_GROWTH);
@@ -811,6 +817,7 @@ const App: React.FC = () => {
                             transform: 'translate(-50%, -50%)',
                             boxShadow: `0 0 15px ${player.lastHitTimestamp + FLASH_DURATION > Date.now() ? 'rgba(255,255,255,0.8)' : 'transparent'}`,
                             transition: `box-shadow ${FLASH_DURATION/2}ms`,
+                             zIndex: 2,
                         }}
                     />
                     
