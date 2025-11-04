@@ -1,0 +1,5 @@
+{
+  "name": "Modular Survivor",
+  "description": "A Vampire Survivors-like game with a modular design for characters, weapons, enemies, and stages. Features a dual level-up system for attributes and weapons.",
+  "requestFramePermissions": []
+}
