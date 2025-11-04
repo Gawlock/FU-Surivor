@@ -2,13 +2,15 @@
 import React, { useState } from 'react';
 import { CHARACTERS } from '../data/characters';
 import { WEAPONS } from '../data/weapons';
-import type { CharacterData } from '../types';
+import type { CharacterData, SaveData } from '../types';
+import { formatTime } from '../utils';
 
 interface StartScreenProps {
   onStart: (characterId: string, weaponId: string) => void;
+  saveData: SaveData | null;
 }
 
-const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ onStart, saveData }) => {
   const [selectedChar, setSelectedChar] = useState<CharacterData | null>(null);
 
   const handleCharSelect = (char: CharacterData) => {
@@ -59,29 +61,37 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart }) => {
       </h1>
       <p className="text-xl mb-8 text-gray-300">Choose your survivor.</p>
       <div className="flex flex-wrap justify-center gap-8">
-        {Object.values(CHARACTERS).map(char => (
-          <button
-            key={char.id}
-            onClick={() => handleCharSelect(char)}
-            className="w-64 p-6 bg-gray-800 border-2 border-gray-600 rounded-lg text-center hover:bg-red-600 hover:border-red-400 transform hover:-translate-y-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-          >
-            <h2 className="text-3xl font-bold text-yellow-400 mb-2">{char.name}</h2>
-            {char.initialWeaponId ? (
-              <>
-                <p className="text-gray-400 mb-4">Starts with:</p>
-                <div className="text-5xl mb-2">{WEAPONS[char.initialWeaponId].icon}</div>
-                <p className="font-semibold">{WEAPONS[char.initialWeaponId].name}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-gray-400 mb-4">Special Passive:</p>
-                <div className="text-5xl mb-2">📈</div>
-                <p className="font-semibold">+400% XP Gain</p>
-                <p className="text-xs text-gray-500 mt-2">(Choose any starting weapon)</p>
-              </>
-            )}
-          </button>
-        ))}
+        {Object.values(CHARACTERS).map(char => {
+          const bestTime = saveData?.bestTimes[char.id];
+          return (
+            <button
+              key={char.id}
+              onClick={() => handleCharSelect(char)}
+              className="w-64 p-6 bg-gray-800 border-2 border-gray-600 rounded-lg text-center hover:bg-red-600 hover:border-red-400 transform hover:-translate-y-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            >
+              <h2 className="text-3xl font-bold text-yellow-400 mb-2">{char.name}</h2>
+              {char.initialWeaponId ? (
+                <>
+                  <p className="text-gray-400 mb-4">Starts with:</p>
+                  <div className="text-5xl mb-2">{WEAPONS[char.initialWeaponId].icon}</div>
+                  <p className="font-semibold">{WEAPONS[char.initialWeaponId].name}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-400 mb-4">Special Passive:</p>
+                  <div className="text-5xl mb-2">📈</div>
+                  <p className="font-semibold">+400% XP Gain</p>
+                  <p className="text-xs text-gray-500 mt-2">(Choose any starting weapon)</p>
+                </>
+              )}
+               {bestTime && bestTime > 0 && (
+                <p className="text-sm text-yellow-200 mt-4 border-t border-gray-600 pt-2">
+                  Best Time: <span className="font-bold">{formatTime(bestTime)}</span>
+                </p>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

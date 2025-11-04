@@ -79,10 +79,15 @@ export interface Projectile extends GameObject {
   color: string;
   weaponId: string;
   piercing?: boolean;
-  customUpdate?: 'serpentine' | 'kirin';
+  customUpdate?: 'serpentine' | 'kirin' | 'fibonacci' | 'card_display';
   spawnTime?: number;
   isHeroic?: boolean;
   knockback?: number;
+  spawnPosition?: Vector2D;
+  currentAngle?: number;
+  width?: number;
+  height?: number;
+  displayText?: string;
 }
 
 export interface ExperienceOrb extends GameObject {
@@ -93,6 +98,7 @@ export interface PlayerWeapon {
   id: string;
   level: number;
   cooldown: number;
+  passiveCooldown?: number;
 }
 
 export interface Turret extends GameObject {
@@ -116,6 +122,11 @@ export interface WeaponLevel {
   maxDeployed?: number;
   turretLifespan?: number;
   turretFireCooldown?: number;
+  knockback?: number;
+  hpRegen?: number;
+  regenInterval?: number; // in ms
+  auraRadius?: number;
+  auraDamagePerSecond?: number;
 }
 
 export interface WeaponData {
@@ -155,4 +166,8 @@ export interface CharacterData {
     initialWeaponId?: string;
     heroicGaugeMax: number;
     heroicSkillDuration: number; // in ms
+}
+
+export interface SaveData {
+  bestTimes: Record<string, number>; // characterId -> time in seconds
 }

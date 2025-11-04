@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { formatTime } from '../utils';
 
 interface GameOverScreenProps {
   score: number;
@@ -7,12 +8,6 @@ interface GameOverScreenProps {
 }
 
 const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, onRestart }) => {
-    const formatTime = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = Math.floor(seconds % 60);
-        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-    }
-
   return (
     <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col justify-center items-center z-50">
       <h1 className="text-7xl font-extrabold mb-4 text-red-700">GAME OVER</h1>

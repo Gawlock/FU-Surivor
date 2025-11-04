@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Player, Enemy, Projectile, ExperienceOrb, LevelUpOption, Attribute as AttrEnum, Vector2D, Turret } from './types';
+import type { Player, Enemy, Projectile, ExperienceOrb, LevelUpOption, Attribute as AttrEnum, Vector2D, Turret, SaveData, PlayerWeapon } from './types';
 import { GameStatus, Attribute } from './types';
 import { useGameLoop } from './hooks/useGameLoop';
 import { PLAYER_SIZE, GAME_TICK_RATE, XP_BASE, XP_GROWTH, FLASH_DURATION, ORB_SIZE } from './constants';
@@ -9,6 +10,7 @@ import { ENEMIES } from './data/enemies';
 import { WEAPONS } from './data/weapons';
 import { STAGES } from './data/stages';
 import { isColliding, normalize, distance, getClosestEnemy } from './utils';
+import { saveGameData, loadGameData } from './gameData';
 import GameUI from './components/GameUI';
 import LevelUpModal from './components/LevelUpModal';
 import StartScreen from './components/StartScreen';
@@ -43,6 +45,7 @@ const App: React.FC = () => {
     const [gameTime, setGameTime] = useState(0);
     const [camera, setCamera] = useState({ x: 0, y: 0 });
     const [levelUpOptions, setLevelUpOptions] = useState<{attribute: LevelUpOption<AttrEnum>[], weapon: LevelUpOption<string>[]}>({attribute: [], weapon: []});
+    const [saveData, setSaveData] = useState<SaveData | null>(null);
     const [animationState, setAnimationState] = useState({
         frame: 0,
         direction: 'idle' as AnimationDirection,
@@ -54,6 +57,27 @@ const App: React.FC = () => {
     const stage = STAGES.forest;
     const stageTimeouts = useRef<number[]>([]);
     const nextWaveIndex = useRef(0);
+    
+    useEffect(() => {
+        setSaveData(loadGameData());
+    }, []);
+
+    useEffect(() => {
+        if (gameStatus === GameStatus.GameOver && player && saveData) {
+            const currentBest = saveData.bestTimes[player.characterId] || 0;
+            if (gameTime > currentBest) {
+                const newSaveData: SaveData = {
+                    ...saveData,
+                    bestTimes: {
+                        ...saveData.bestTimes,
+                        [player.characterId]: gameTime,
+                    },
+                };
+                saveGameData(newSaveData);
+                setSaveData(newSaveData);
+            }
+        }
+    }, [gameStatus, player, gameTime, saveData]);
 
     const initializeGame = useCallback((characterId: string, weaponId: string) => {
         const characterData = CHARACTERS[characterId];
@@ -64,6 +88,16 @@ const App: React.FC = () => {
             return;
         }
 
+        const startingWeapon: PlayerWeapon = {
+            id: startingWeaponId,
+            level: 1,
+            cooldown: WEAPONS[startingWeaponId].levels[0].cooldown,
+        };
+
+        if (startingWeaponId === 'baralho_do_malandro') {
+            startingWeapon.cooldown = 1; // Set cooldown to near-zero to ensure it fires on the first game tick
+        }
+
         const initialPlayer: Player = {
             id: 'player',
             position: { x: 0, y: 0 },
@@ -72,11 +106,7 @@ const App: React.FC = () => {
             level: 1,
             xp: 0,
             xpToNextLevel: XP_BASE,
-            weapons: [{
-                id: startingWeaponId,
-                level: 1,
-                cooldown: WEAPONS[startingWeaponId].levels[0].cooldown,
-            }],
+            weapons: [startingWeapon],
             velocity: { x: 0, y: 0 },
             lastHitTimestamp: 0,
             characterId: characterData.id,
@@ -199,7 +229,7 @@ const App: React.FC = () => {
         // Weapon Options
         const ownedWeapons = player.weapons;
         const upgradeableWeapons = ownedWeapons.filter(w => w.level < WEAPONS[w.id].levels.length);
-        const newWeaponIds = Object.keys(WEAPONS).filter(wid => !ownedWeapons.some(w => w.id === wid));
+        const newWeaponIds = Object.keys(WEAPONS).filter(wid => !ownedWeapons.some(w => w.id === wid) && WEAPONS[wid].name !== 'Fist of Fury' && WEAPONS[wid].name !== 'Book of the Celestial' && WEAPONS[wid].name !== 'Dragon Katana' && WEAPONS[wid].name !== 'Kirin Companion' && WEAPONS[wid].name !== 'Deployable Turret' && WEAPONS[wid].name !== 'Luvas do Chef');
         
         const options: LevelUpOption<string>[] = [];
         // Add upgrades
@@ -253,9 +283,22 @@ const App: React.FC = () => {
                     weapons: p.weapons.map(w => w.id === weaponId ? { ...w, level: nextLevel } : w)
                 };
             } else {
+                const weaponData = WEAPONS[weaponId];
+                const weaponLevelData = weaponData.levels[0];
+                const newPlayerWeapon: PlayerWeapon = {
+                    id: weaponId,
+                    level: 1,
+                    cooldown: weaponLevelData.cooldown,
+                };
+                if (weaponLevelData.regenInterval) {
+                    newPlayerWeapon.passiveCooldown = weaponLevelData.regenInterval;
+                }
+                if (weaponId === 'baralho_do_malandro') {
+                    newPlayerWeapon.cooldown = 0;
+                }
                 return {
                     ...p,
-                    weapons: [...p.weapons, { id: weaponId, level: 1, cooldown: WEAPONS[weaponId].levels[0].cooldown }]
+                    weapons: [...p.weapons, newPlayerWeapon]
                 };
             }
         });
@@ -342,7 +385,25 @@ const App: React.FC = () => {
 
         setPlayer(p => {
             if(!p) return null;
-            const newWeapons = p.weapons.map(w => {
+
+            let hpFromRegen = 0;
+
+            const weaponsAfterPassives = p.weapons.map(w => {
+                const weaponData = WEAPONS[w.id];
+                const weaponLevelData = weaponData.levels[w.level - 1];
+        
+                if (weaponLevelData.hpRegen && weaponLevelData.regenInterval) {
+                    let newPassiveCooldown = (w.passiveCooldown ?? weaponLevelData.regenInterval) - GAME_TICK_RATE;
+                    if (newPassiveCooldown <= 0) {
+                        hpFromRegen += weaponLevelData.hpRegen;
+                        newPassiveCooldown = weaponLevelData.regenInterval;
+                    }
+                    return { ...w, passiveCooldown: newPassiveCooldown };
+                }
+                return w;
+            });
+
+            const newWeapons = weaponsAfterPassives.map(w => {
                 const newCooldown = w.cooldown - GAME_TICK_RATE;
                 if (newCooldown <= 0) {
                     const weaponData = WEAPONS[w.id];
@@ -386,7 +447,12 @@ const App: React.FC = () => {
                 }
                 return { ...w, cooldown: newCooldown };
             });
-            return {...p, weapons: newWeapons};
+
+            const newStats = hpFromRegen > 0
+                ? { ...p.stats, currentHp: Math.min(p.stats.maxHp, p.stats.currentHp + hpFromRegen) }
+                : p.stats;
+            
+            return {...p, stats: newStats, weapons: newWeapons};
         });
 
         // 2.5. Turret Logic (Update and Fire)
@@ -416,6 +482,7 @@ const App: React.FC = () => {
                                     y: direction.y * weaponLevel.projectileSpeed,
                                 },
                                 damage: weaponLevel.damage * (player?.stats.damageMultiplier || 1),
+                                knockback: weaponLevel.knockback,
                                 lifespan: 1500,
                                 color: 'bg-cyan-400',
                                 weaponId: turret.weaponId,
@@ -438,6 +505,7 @@ const App: React.FC = () => {
                                     y: direction.y * weaponLevel.projectileSpeed * (player?.stats.projectileSpeedMultiplier || 1),
                                 },
                                 damage: weaponLevel.damage * (player?.stats.damageMultiplier || 1),
+                                knockback: weaponLevel.knockback,
                                 lifespan: 2000,
                                 color: 'bg-pink-500',
                                 weaponId: turret.weaponId,
@@ -488,6 +556,30 @@ const App: React.FC = () => {
                     let newPosition = (distance(p.position, targetPosition) < speed) ? targetPosition : { x: p.position.x + direction.x * speed, y: p.position.y + direction.y * speed };
                     return { ...p, position: newPosition };
                 }
+                 if (p.customUpdate === 'fibonacci' && p.spawnPosition && p.currentAngle !== undefined && p.spawnTime) {
+                    // velocity.x = rotation speed in rad/sec
+                    // velocity.y = growth speed in px/sec
+                    const rotationPerTick = p.velocity.x * (GAME_TICK_RATE / 1000); 
+                    const growthPerTick = p.velocity.y * (GAME_TICK_RATE / 1000);
+
+                    const newAngle = p.currentAngle + rotationPerTick;
+                    
+                    // elapsed time in ticks
+                    const elapsedTicks = (now - p.spawnTime) / GAME_TICK_RATE;
+                    const radius = elapsedTicks * growthPerTick;
+
+                    return {
+                        ...p,
+                        position: {
+                            x: p.spawnPosition.x + radius * Math.cos(newAngle),
+                            y: p.spawnPosition.y + radius * Math.sin(newAngle),
+                        },
+                        currentAngle: newAngle,
+                    };
+                }
+                if (p.customUpdate === 'card_display') {
+                    return { ...p, position: { ...player.position } };
+                }
                 // Default movement
                 return { ...p, position: { x: p.position.x + p.velocity.x, y: p.position.y + p.velocity.y } };
             });
@@ -520,9 +612,34 @@ const App: React.FC = () => {
         const damageMap: Map<string, { damage: number; sources: Set<string>; knockback: Vector2D }> = new Map();
         const projectilesToRemove = new Set<string>();
 
+        // Aura Damage
+        const auraWeapon = player.weapons.find(w => WEAPONS[w.id].levels[w.level - 1].auraRadius);
+        if (auraWeapon) {
+            const weaponData = WEAPONS[auraWeapon.id];
+            const weaponLevelData = weaponData.levels[auraWeapon.level - 1];
+            const auraRadius = weaponLevelData.auraRadius!;
+            const auraDamagePerTick = (weaponLevelData.auraDamagePerSecond! * (GAME_TICK_RATE / 1000));
+            
+            for (const enemy of enemies) {
+                if (distance(player.position, enemy.position) < auraRadius) {
+                    if (!damageMap.has(enemy.id)) {
+                        damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
+                    }
+                    const enemyDamage = damageMap.get(enemy.id)!;
+                    enemyDamage.damage += auraDamagePerTick;
+                    enemyDamage.sources.add(auraWeapon.id);
+                    
+                    const knockbackStrength = 0.5;
+                    const knockbackDir = normalize({ x: enemy.position.x - player.position.x, y: enemy.position.y - player.position.y });
+                    enemyDamage.knockback.x += knockbackDir.x * knockbackStrength;
+                    enemyDamage.knockback.y += knockbackDir.y * knockbackStrength;
+                }
+            }
+        }
+
         // Projectiles vs Enemies
         for (const proj of projectiles) {
-            if (projectilesToRemove.has(proj.id)) continue;
+            if (projectilesToRemove.has(proj.id) || proj.damage === 0) continue;
             for (const enemy of enemies) {
                 if (isColliding(proj, enemy)) {
                     if (!damageMap.has(enemy.id)) damageMap.set(enemy.id, { damage: 0, sources: new Set(), knockback: { x: 0, y: 0 } });
@@ -574,118 +691,202 @@ const App: React.FC = () => {
             setPlayer(p => p ? { ...p, heroicGauge: Math.min(p.heroicGauge + newOrbsFromTick.length * 8, p.heroicGaugeMax) } : null);
         }
 
-        // Player vs Enemies
-        if (player.invulnerableUntil && now < player.invulnerableUntil) {
-            // Player is invulnerable
-        } else {
-            let damageToPlayer = 0;
-            survivingEnemies.forEach(enemy => { if (isColliding(player, enemy)) { damageToPlayer += Math.max(0, enemy.damage - player.stats.defense); } });
-            if (damageToPlayer > 0) {
-                setPlayer(p => {
-                    if (!p) return null;
-                    const newHp = p.stats.currentHp - damageToPlayer;
-                    if(newHp <= 0) {
-                        setGameStatus(GameStatus.GameOver);
-                        return {...p, stats: {...p.stats, currentHp: 0}, lastHitTimestamp: now};
-                    }
-                    return { ...p, stats: { ...p.stats, currentHp: newHp }, lastHitTimestamp: now };
-                });
+        // Player vs Enemies collision
+        setPlayer(p => {
+            if (!p || (p.invulnerableUntil && now < p.invulnerableUntil)) return p;
+            let totalDamage = 0;
+            for (const e of survivingEnemies) { // Use already updated surviving enemies
+                if (isColliding(p, e)) {
+                    totalDamage += e.damage;
+                }
             }
-        }
-        
-        // Player vs Orbs
-        const orbsToRemove = new Set<string>();
-        let xpGained = 0;
-        orbs.forEach(orb => {
-            if (distance(player.position, orb.position) < 150) {
-                 const direction = normalize({ x: player.position.x - orb.position.x, y: player.position.y - orb.position.y });
-                 orb.position.x += direction.x * 5; orb.position.y += direction.y * 5;
+            if (totalDamage > 0 && now > p.lastHitTimestamp + 500) { // 500ms invulnerability
+                const damageTaken = Math.max(1, totalDamage - p.stats.defense);
+                const newHp = p.stats.currentHp - damageTaken;
+                if (newHp <= 0) {
+                    setGameStatus(GameStatus.GameOver);
+                    return { ...p, stats: { ...p.stats, currentHp: 0 } };
+                }
+                return { ...p, stats: { ...p.stats, currentHp: newHp }, lastHitTimestamp: now };
             }
-            if (isColliding(player, orb)) { xpGained += orb.value * player.stats.xpMultiplier; orbsToRemove.add(orb.id); }
+            return p;
         });
 
+        // 6. Orb Collection
+        const orbsToCollect: string[] = [];
+        let xpGained = 0;
+        setOrbs(prevOrbs => prevOrbs.map(orb => {
+            const direction = normalize({ x: player.position.x - orb.position.x, y: player.position.y - orb.position.y });
+            const speed = 10;
+            const newPos = {
+                x: orb.position.x + direction.x * speed,
+                y: orb.position.y + direction.y * speed
+            };
+            if (distance(newPos, player.position) < player.size / 2) {
+                orbsToCollect.push(orb.id);
+                xpGained += orb.value;
+            }
+            return { ...orb, position: newPos };
+        }).filter(orb => !orbsToCollect.includes(orb.id)));
+
+        // 7. XP and Level Up
         if (xpGained > 0) {
             setPlayer(p => {
                 if (!p) return null;
-                let newXp = p.xp + xpGained;
-                let newLevel = p.level;
-                let newXpToNext = p.xpToNextLevel;
-                while (newXp >= newXpToNext) {
-                    newLevel++;
-                    newXp -= newXpToNext;
-                    newXpToNext = Math.floor(newXpToNext * XP_GROWTH);
-                    setGameStatus(GameStatus.LevelUpAttributes);
+                const newXp = p.xp + (xpGained * p.stats.xpMultiplier);
+                if (newXp >= p.xpToNextLevel) {
+                    const newLevel = p.level + 1;
+                    const newXpToNext = Math.floor(p.xpToNextLevel * XP_GROWTH);
                     generateLevelUpOptions();
+                    setGameStatus(GameStatus.LevelUpAttributes);
+                    return { ...p, level: newLevel, xp: newXp - p.xpToNextLevel, xpToNextLevel: newXpToNext };
                 }
-                return { ...p, level: newLevel, xp: newXp, xpToNextLevel: newXpToNext };
+                return { ...p, xp: newXp };
             });
         }
-        setOrbs(orbs => orbs.filter(orb => !orbsToRemove.has(orb.id)));
+    }, [player, gameTime, enemies, projectiles, turrets, orbs, generateLevelUpOptions]);
 
-    }, [player, enemies, projectiles, orbs, turrets, gameTime, stage.spawnWaves, generateLevelUpOptions]);
 
     useGameLoop(gameTick, gameStatus !== GameStatus.Playing);
+    
+    const worldWidth = 3000;
+    const worldHeight = 3000;
+    
+    // RENDER LOGIC
+    if (!player && gameStatus !== GameStatus.StartScreen) return <div>Loading...</div>;
 
-    const renderGameObject = (obj: { id: string, position: {x: number, y: number}, size: number, color?: string, flash?: boolean, shape?: 'circle' | 'square' }) => {
-        const screenPos = { x: window.innerWidth / 2 + obj.position.x - camera.x, y: window.innerHeight / 2 + obj.position.y - camera.y };
-        const shapeClass = (obj.shape ?? 'circle') === 'circle' ? 'rounded-full' : 'rounded-md';
-        const baseClasses = `absolute transition-colors duration-75 ${shapeClass}`;
-        const flashClass = obj.flash ? "bg-white" : obj.color;
-        return <div key={obj.id} className={`${baseClasses} ${flashClass}`} style={{ left: screenPos.x - obj.size / 2, top: screenPos.y - obj.size / 2, width: obj.size, height: obj.size }} />;
-    };
+    const renderProjectile = (proj: Projectile) => {
+        const key = proj.id;
+        let baseClasses = 'absolute rounded-full';
+        const style: React.CSSProperties = {
+            width: `${proj.width || proj.size}px`,
+            height: `${proj.height || proj.size}px`,
+            left: proj.position.x,
+            top: proj.position.y,
+            transform: `translate(-50%, -50%)`,
+        };
+        
+        if (proj.customUpdate === 'card_display' && player) {
+            return (
+                <div key={key} className="absolute text-yellow-300 font-bold text-4xl" style={{...style, left: player.position.x, top: player.position.y - player.size - 20}}>
+                   {proj.displayText}
+                </div>
+            );
+        }
+        
+        if (proj.weaponId === 'baralho_do_malandro') {
+           baseClasses = 'absolute border-2 border-black';
+        }
 
-    if (gameStatus === GameStatus.StartScreen) return <StartScreen onStart={initializeGame} />;
-    if (gameStatus === GameStatus.GameOver && player) return <GameOverScreen score={gameTime} onRestart={() => setGameStatus(GameStatus.StartScreen)} />;
-    if (!player) return <div>Loading...</div>;
-
-    const now = Date.now();
-    const playerScreenPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const heroicGaugePercentage = (player.heroicGauge / player.heroicGaugeMax) * 100;
-
-    const spriteX = animationState.frame * PLAYER_SIZE;
-    const spriteY = ANIMATION_ROW_MAP[animationState.direction] * PLAYER_SIZE;
+        return <div key={key} className={`${baseClasses} ${proj.color}`} style={style}></div>
+    }
 
     return (
-        <div className="relative w-screen h-screen overflow-hidden bg-gray-800 cursor-none">
-             {gameStatus === GameStatus.LevelUpAttributes && <LevelUpModal mode="attribute" attributeOptions={levelUpOptions.attribute} weaponOptions={[]} onAttributeSelect={handleAttributeSelect} onWeaponSelect={() => {}} />}
-             {gameStatus === GameStatus.LevelUpWeapons && <LevelUpModal mode="weapon" weaponOptions={levelUpOptions.weapon} attributeOptions={[]} onWeaponSelect={handleWeaponSelect} onAttributeSelect={() => {}}/>}
+        <div className="w-screen h-screen bg-green-800 relative overflow-hidden">
+            {gameStatus === GameStatus.StartScreen && <StartScreen onStart={initializeGame} saveData={saveData} />}
+            {gameStatus === GameStatus.GameOver && player && <GameOverScreen score={gameTime} onRestart={() => setGameStatus(GameStatus.StartScreen)} />}
+            {gameStatus === GameStatus.LevelUpAttributes && <LevelUpModal mode="attribute" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
+            {gameStatus === GameStatus.LevelUpWeapons && <LevelUpModal mode="weapon" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
             
-            <GameUI player={player} gameTime={gameTime} />
-            
-            <div className="game-world">
-                {orbs.map(orb => renderGameObject({...orb, color: 'bg-blue-300'}))}
-                {turrets.map(t => renderGameObject({...t, color: t.isMegaTurret ? 'bg-cyan-600' : 'bg-gray-500', shape: 'square'}))}
-                {enemies.map(e => renderGameObject({...e, color: ENEMIES[e.typeId].color, flash: now - e.lastHitTimestamp < FLASH_DURATION}))}
-                {projectiles.map(p => renderGameObject(p))}
-
-                {/* Player and UI Elements attached to Player */}
-                <div key={player.id} style={{ left: playerScreenPos.x - player.size / 2, top: playerScreenPos.y - player.size / 2, width: player.size, height: player.size, position: 'absolute' }}>
-                     <div 
-                        className={`w-full h-full transition-colors duration-75`}
-                        style={{
-                            backgroundImage: `url('/assets/${player.characterId}_sprite.png')`,
-                            backgroundPosition: `-${spriteX}px -${spriteY}px`,
-                            imageRendering: 'pixelated',
-                            filter: now - player.lastHitTimestamp < FLASH_DURATION ? 'brightness(3)' : 'none'
-                        }}
-                     />
-                    {/* Heroic Gauge Bar */}
-                    <div className="absolute -top-4 w-full h-2 bg-gray-600 rounded-full overflow-hidden border border-black">
-                         <div className="h-full bg-yellow-400 rounded-full transition-all duration-200" style={{ width: `${heroicGaugePercentage}%`, filter: heroicGaugePercentage >= 100 ? 'drop-shadow(0 0 3px #FFFF00)' : 'none' }}></div>
-                    </div>
-                </div>
-               
+            {player && (
+            <>
+                <GameUI player={player} gameTime={gameTime} />
                 <div 
-                  className="absolute border-2 border-white rounded-full pointer-events-none z-50"
-                  style={{
-                    left: mousePosition.current.x - 8,
-                    top: mousePosition.current.y - 8,
-                    width: 16,
-                    height: 16,
-                    opacity: 0.5,
-                  }}
-                />
-            </div>
+                    id="game-world"
+                    className="absolute"
+                    style={{
+                        width: `${worldWidth}px`,
+                        height: `${worldHeight}px`,
+                        transform: `translate(${-camera.x + window.innerWidth/2}px, ${-camera.y + window.innerHeight/2}px)`,
+                    }}
+                >
+                    {/* Player */}
+                    <div
+                        className="absolute bg-blue-500 rounded-full"
+                        style={{
+                            left: player.position.x,
+                            top: player.position.y,
+                            width: `${player.size}px`,
+                            height: `${player.size}px`,
+                            transform: 'translate(-50%, -50%)',
+                            boxShadow: `0 0 15px ${player.lastHitTimestamp + FLASH_DURATION > Date.now() ? 'rgba(255,255,255,0.8)' : 'transparent'}`,
+                            transition: `box-shadow ${FLASH_DURATION/2}ms`,
+                        }}
+                    />
+                    
+                     {/* Aura */}
+                     {player.weapons.map(w => {
+                        const weaponData = WEAPONS[w.id];
+                        const weaponLevelData = weaponData.levels[w.level - 1];
+                        if (weaponLevelData.auraRadius) {
+                            return (
+                                <div key={w.id} className="absolute bg-yellow-300 bg-opacity-20 rounded-full border-2 border-yellow-400"
+                                    style={{
+                                        width: `${weaponLevelData.auraRadius * 2}px`,
+                                        height: `${weaponLevelData.auraRadius * 2}px`,
+                                        left: player.position.x,
+                                        top: player.position.y,
+                                        transform: 'translate(-50%, -50%)',
+                                    }}
+                                ></div>
+                            );
+                        }
+                        return null;
+                    })}
+
+                    {/* Enemies */}
+                    {enemies.map(enemy => (
+                        <div
+                            key={enemy.id}
+                            className={`absolute rounded-full ${ENEMIES[enemy.typeId].color}`}
+                            style={{
+                                left: enemy.position.x,
+                                top: enemy.position.y,
+                                width: `${enemy.size}px`,
+                                height: `${enemy.size}px`,
+                                transform: 'translate(-50%, -50%)',
+                                boxShadow: `0 0 10px ${enemy.lastHitTimestamp + FLASH_DURATION > Date.now() ? 'rgba(255,0,0,0.8)' : 'transparent'}`,
+                                transition: `box-shadow ${FLASH_DURATION/2}ms`,
+                            }}
+                        />
+                    ))}
+
+                    {/* Turrets */}
+                    {turrets.map(turret => (
+                         <div
+                            key={turret.id}
+                            className={`absolute rounded-md ${turret.isMegaTurret ? 'bg-cyan-600' : 'bg-pink-700'} border-2 border-gray-900`}
+                            style={{
+                                left: turret.position.x,
+                                top: turret.position.y,
+                                width: `${turret.size}px`,
+                                height: `${turret.size}px`,
+                                transform: 'translate(-50%, -50%)',
+                            }}
+                        />
+                    ))}
+
+                    {/* Projectiles */}
+                    {projectiles.map(renderProjectile)}
+                    
+                    {/* Orbs */}
+                    {orbs.map(orb => (
+                        <div
+                            key={orb.id}
+                            className="absolute bg-blue-300 rounded-full"
+                            style={{
+                                left: orb.position.x,
+                                top: orb.position.y,
+                                width: `${orb.size}px`,
+                                height: `${orb.size}px`,
+                                transform: 'translate(-50%, -50%)',
+                                boxShadow: '0 0 8px rgba(173, 216, 230, 0.8)',
+                            }}
+                        />
+                    ))}
+                </div>
+            </>
+            )}
         </div>
     );
 };

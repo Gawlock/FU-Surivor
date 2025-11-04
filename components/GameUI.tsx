@@ -1,16 +1,11 @@
 
 import React from 'react';
 import type { Player } from '../types';
+import { formatTime } from '../utils';
 
 interface GameUIProps {
   player: Player;
   gameTime: number;
-}
-
-const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 const GameUI: React.FC<GameUIProps> = ({ player, gameTime }) => {
