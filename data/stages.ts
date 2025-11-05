@@ -4,7 +4,6 @@ export const STAGES: Record<string, StageData> = {
   forest: {
     id: 'forest',
     name: 'Floresta de Rivendell',
-    duration: 600, // 10 minutes
     spawnWaves: [
       // Waves now appear 25% faster
       { time: 1.6, enemyTypeId: 'bat', count: 1, interval: 0 },
@@ -39,6 +38,9 @@ export const STAGES: Record<string, StageData> = {
       
       { time: 272, enemyTypeId: 'skeleton', count: 10, interval: 1000 },
       { time: 272, enemyTypeId: 'bat', count: 15, interval: 500 },
+      
+      // BOSS SPAWN AT 5 MINUTES
+      { time: 300, enemyTypeId: 'skeletonKing', count: 1, interval: 0 },
 
       { time: 304, enemyTypeId: 'goblin', count: 15, interval: 600 },
       { time: 304, enemyTypeId: 'skeleton', count: 5, interval: 1500 },
@@ -51,6 +53,22 @@ export const STAGES: Record<string, StageData> = {
 
       { time: 432, enemyTypeId: 'bat', count: 40, interval: 150 },
       { time: 448, enemyTypeId: 'skeleton', count: 25, interval: 400 },
+
+      // BOSS SPAWN AT 10 MINUTES
+      { time: 600, enemyTypeId: 'skeletonKing', count: 1, interval: 0 },
+
+      { time: 608, enemyTypeId: 'bat', count: 50, interval: 100 },
+      { time: 640, enemyTypeId: 'goblin', count: 30, interval: 300 },
+      { time: 680, enemyTypeId: 'skeleton', count: 40, interval: 200 },
+      
+      { time: 720, enemyTypeId: 'skeletonKing', count: 2, interval: 2000 },
+      { time: 750, enemyTypeId: 'bat', count: 60, interval: 50 },
+      
+      { time: 800, enemyTypeId: 'goblin', count: 40, interval: 100 },
+      { time: 840, enemyTypeId: 'skeleton', count: 50, interval: 100 },
+      
+      // FINAL BOSS SPAWN
+      { time: 900, enemyTypeId: 'voidHerald', count: 1, interval: 0 },
     ],
   },
 };

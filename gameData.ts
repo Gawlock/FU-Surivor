@@ -4,6 +4,7 @@ const SAVE_KEY = 'modularSurvivorSave';
 
 export const defaultSaveData: SaveData = {
   bestTimes: {},
+  completedStages: {},
   zenit: 0,
   upgrades: {
     revive: { level: 0, active: true },
@@ -26,6 +27,10 @@ export const loadGameData = (): SaveData => {
         upgrades: {
             ...defaultSaveData.upgrades,
             ...(parsedData.upgrades || {})
+        },
+        completedStages: {
+          ...defaultSaveData.completedStages,
+          ...(parsedData.completedStages || {})
         }
       };
     }

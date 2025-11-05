@@ -18,7 +18,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'fist_of_fury',
     heroicGaugeMax: 200,
     heroicSkillDuration: 0, // Instant
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-raime.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -37,7 +37,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'book_of_the_celestial',
     heroicGaugeMax: 250,
     heroicSkillDuration: 0, // Instant
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -56,7 +56,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'dragon_katana',
     heroicGaugeMax: 180,
     heroicSkillDuration: 10000, // 10 seconds
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -75,7 +75,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'kirin_companion',
     heroicGaugeMax: 160,
     heroicSkillDuration: 12000, // 12 seconds
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -94,7 +94,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'deployable_turret',
     heroicGaugeMax: 220,
     heroicSkillDuration: 25000, // 25 seconds
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -113,7 +113,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     initialWeaponId: 'chefs_gloves',
     heroicGaugeMax: 190,
     heroicSkillDuration: 8000, // 8 seconds
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   },
@@ -132,7 +132,7 @@ export const CHARACTERS: Record<string, CharacterData> = {
     // No initialWeaponId, it's selectable
     heroicGaugeMax: 100,
     heroicSkillDuration: 5000,
-    spriteSheet: '/sprites/player-placeholder.png',
+    spriteSheet: `/sprites/player-placeholder.png`,
     frameWidth: 32,
     frameHeight: 48,
   }

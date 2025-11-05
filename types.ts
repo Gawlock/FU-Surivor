@@ -19,6 +19,7 @@ export enum GameStatus {
   LevelUpAttributes,
   LevelUpWeapons,
   GameOver,
+  StageComplete,
 }
 
 export enum Attribute {
@@ -65,6 +66,8 @@ export interface EnemyData {
   size: number;
   xp: number;
   isElite?: boolean;
+  isBoss?: boolean;
+  isFinalBoss?: boolean;
   spriteSheet: string;
   frameWidth: number;
   frameHeight: number;
@@ -157,7 +160,6 @@ export interface WeaponData {
 export interface StageData {
   id: string;
   name: string;
-  duration: number; // in seconds
   spawnWaves: SpawnWave[];
 }
 
@@ -196,6 +198,7 @@ export interface UpgradeInfo {
 
 export interface SaveData {
   bestTimes: Record<string, number>; // characterId -> time in seconds
+  completedStages: Record<string, boolean>; // stageId -> true
   zenit: number;
   upgrades: Record<UpgradeId, UpgradeInfo>;
 }

@@ -15,6 +15,7 @@ import LevelUpModal from './components/LevelUpModal';
 import StartScreen from './components/StartScreen';
 import GameOverScreen from './components/GameOverScreen';
 import StageSelectScreen from './components/StageSelectScreen';
+import StageCompleteScreen from './components/StageCompleteScreen';
 
 type AimDirection = 'up' | 'down' | 'left' | 'right' | 'none';
 type AnimationDirection = 'idle' | 'up' | 'down' | 'left' | 'right';
@@ -71,22 +72,29 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (gameStatus === GameStatus.GameOver && player && saveData) {
-            // Update best time
-            const currentBest = saveData.bestTimes[player.characterId] || 0;
+        if ((gameStatus === GameStatus.GameOver || gameStatus === GameStatus.StageComplete) && player && saveData) {
             let newSaveData = { ...saveData };
-            if (gameTime > currentBest) {
-                newSaveData = {
-                    ...newSaveData,
-                    bestTimes: {
-                        ...newSaveData.bestTimes,
-                        [player.characterId]: gameTime,
-                    },
-                };
+
+            // Update best time only on victory
+            if (gameStatus === GameStatus.StageComplete) {
+                const currentBest = saveData.bestTimes[player.characterId] || 0;
+                // Only set if it's a new record (or first time)
+                if (gameTime < currentBest || currentBest === 0) {
+                     newSaveData = {
+                        ...newSaveData,
+                        bestTimes: {
+                            ...newSaveData.bestTimes,
+                            [player.characterId]: gameTime,
+                        },
+                    };
+                }
+                newSaveData.completedStages[stageRef.current!.id] = true;
             }
+            
             // Add zenit
             const timeBonus = Math.floor(gameTime / 60) * 50;
-            newSaveData.zenit += player.sessionZenit + timeBonus;
+            const victoryBonus = gameStatus === GameStatus.StageComplete ? 2000 : 0;
+            newSaveData.zenit += player.sessionZenit + timeBonus + victoryBonus;
             
             updateSaveData(newSaveData);
         }
@@ -225,7 +233,7 @@ const App: React.FC = () => {
                 setPlayer(p => p ? { ...p, isHeroicSkillActive: true, heroicSkillDuration: character.heroicSkillDuration } : null);
                 break;
             case 'andwyn':
-                setEnemies(es => es.filter(e => e.typeId.includes('boss'))); // Assuming bosses have 'boss' in their ID
+                setEnemies(es => es.filter(e => ENEMIES[e.typeId].isBoss));
                 break;
             case 'gaeru':
                  setPlayer(p => p ? { ...p, isHeroicSkillActive: true, heroicSkillDuration: character.heroicSkillDuration } : null);
@@ -571,12 +579,17 @@ const App: React.FC = () => {
             let newOrbsFromTick: ExperienceOrb[] = [];
             let newZenitOrbsFromTick: ZenitOrb[] = [];
             let survivingEnemies: Enemy[] = [];
+            let isStageComplete = false;
+
             for (const e of currentEnemies) {
                 const totalDamage = (damageMap.get(e.id)?.damage || 0) + explosions.reduce((acc, exp) => distance(e.position, exp.position) < exp.radius ? acc + exp.damage : acc, 0);
                 if (e.currentHp - totalDamage <= 0) {
                     const enemyData = ENEMIES[e.typeId];
+                    if (enemyData.isFinalBoss) {
+                        isStageComplete = true;
+                    }
                     newOrbsFromTick.push({ id: `orb_${now}_${Math.random()}`, position: e.position, size: ORB_SIZE, value: enemyData.xp });
-                    const dropChance = enemyData.isElite ? 0.50 : 0.08;
+                    const dropChance = (enemyData.isElite || enemyData.isBoss) ? 0.50 : 0.08;
                     if (Math.random() < dropChance) {
                         const zenitValue = Math.floor(player.level + (gameTime * 2) + 30);
                         newZenitOrbsFromTick.push({ id: `zenit_${now}_${Math.random()}`, position: {x: e.position.x+5, y: e.position.y+5}, size: ORB_SIZE * 1.2, value: zenitValue });
@@ -605,6 +618,11 @@ const App: React.FC = () => {
                     });
                 }
             }
+
+            if (isStageComplete) {
+                setGameStatus(GameStatus.StageComplete);
+            }
+
             if(newOrbsFromTick.length > 0) { setOrbs(o => [...o, ...newOrbsFromTick]); setPlayer(p => p ? { ...p, heroicGauge: Math.min(p.heroicGauge + newOrbsFromTick.length * 8, p.heroicGaugeMax) } : null); }
             if(newZenitOrbsFromTick.length > 0) setZenitOrbs(zo => [...zo, ...newZenitOrbsFromTick]);
             setPlayer(p => {
@@ -708,10 +726,11 @@ const App: React.FC = () => {
             {gameStatus === GameStatus.StartScreen && <StartScreen onCharacterSelect={handleCharacterSelect} saveData={saveData} updateSaveData={updateSaveData} />}
             {gameStatus === GameStatus.StageSelect && <StageSelectScreen onSelectStage={handleStageSelect} onBack={() => setGameStatus(GameStatus.StartScreen)} />}
             {gameStatus === GameStatus.GameOver && player && <GameOverScreen score={gameTime} onRestart={() => { setGameStatus(GameStatus.StartScreen); setPlayer(null); }} canRevive={reviveAvailable} onRevive={handleRevive} />}
+            {gameStatus === GameStatus.StageComplete && player && <StageCompleteScreen score={gameTime} zenit={player.sessionZenit + Math.floor(gameTime/60)*50 + 2000} onBack={() => { setGameStatus(GameStatus.StartScreen); setPlayer(null); }} />}
             {gameStatus === GameStatus.LevelUpAttributes && <LevelUpModal mode="attribute" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
             {gameStatus === GameStatus.LevelUpWeapons && <LevelUpModal mode="weapon" attributeOptions={levelUpOptions.attribute} weaponOptions={levelUpOptions.weapon} onAttributeSelect={handleAttributeSelect} onWeaponSelect={handleWeaponSelect} />}
             
-            {player && gameStatus === GameStatus.Playing && (
+            {player && (gameStatus === GameStatus.Playing || gameStatus === GameStatus.Paused) && (
             <>
                 <GameUI player={player} gameTime={gameTime} />
                 <div id="game-world" className="absolute" style={{ width: `${worldWidth}px`, height: `${worldHeight}px`, transform: `translate(${-camera.x + window.innerWidth/2}px, ${-camera.y + window.innerHeight/2}px)` }}>

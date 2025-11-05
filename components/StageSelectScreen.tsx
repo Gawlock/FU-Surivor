@@ -27,7 +27,7 @@ const StageSelectScreen: React.FC<StageSelectScreenProps> = ({ onSelectStage, on
             className="w-80 p-8 bg-gray-800 border-2 border-gray-600 rounded-lg text-center hover:bg-yellow-600 hover:border-yellow-400 transform hover:-translate-y-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
           >
             <h2 className="text-3xl font-bold text-white mb-2">{stage.name}</h2>
-            <p className="text-gray-400">Duration: {stage.duration / 60} minutes</p>
+            <p className="text-gray-400">Final Boss at 15:00</p>
           </button>
         ))}
       </div>

@@ -21,7 +21,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({ score, onRestart, canRe
             onClick={onRevive}
             className="px-10 py-4 bg-yellow-500 text-black font-bold rounded-lg text-2xl border-2 border-yellow-700 hover:bg-yellow-400 transform hover:scale-110 transition-transform duration-200"
             >
-            Revive (10000 Z)
+            Revive
             </button>
         )}
         <button
