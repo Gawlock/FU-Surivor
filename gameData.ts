@@ -4,6 +4,14 @@ const SAVE_KEY = 'modularSurvivorSave';
 
 export const defaultSaveData: SaveData = {
   bestTimes: {},
+  zenit: 0,
+  upgrades: {
+    revive: { level: 0, active: true },
+    duplicator: { level: 0, active: true },
+    speed: { level: 0, active: true },
+    projSpeed: { level: 0, active: true },
+    damage: { level: 0, active: true },
+  }
 };
 
 export const loadGameData = (): SaveData => {
@@ -11,7 +19,15 @@ export const loadGameData = (): SaveData => {
     const savedData = localStorage.getItem(SAVE_KEY);
     if (savedData) {
       const parsedData = JSON.parse(savedData);
-      return { ...defaultSaveData, ...parsedData };
+      // Deep merge to ensure new properties are added
+      return {
+        ...defaultSaveData,
+        ...parsedData,
+        upgrades: {
+            ...defaultSaveData.upgrades,
+            ...(parsedData.upgrades || {})
+        }
+      };
     }
   } catch (error) {
     console.error("Failed to load save data from localStorage:", error);

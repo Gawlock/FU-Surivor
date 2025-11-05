@@ -1,4 +1,5 @@
 
+
 export interface Vector2D {
   x: number;
   y: number;
@@ -51,7 +52,10 @@ export interface Player extends GameObject {
   isHeroicSkillActive: boolean;
   heroicSkillDuration: number;
   invulnerableUntil?: number;
+  sessionZenit: number;
 }
+
+export type EnemyAnimationDirection = 'left' | 'right';
 
 export interface EnemyData {
   name: string;
@@ -60,7 +64,12 @@ export interface EnemyData {
   damage: number;
   size: number;
   xp: number;
-  color: string;
+  isElite?: boolean;
+  spriteSheet: string;
+  frameWidth: number;
+  frameHeight: number;
+  animationFrames: number[];
+  animationSpeed: number; // in ms
 }
 
 export interface Enemy extends GameObject {
@@ -70,6 +79,9 @@ export interface Enemy extends GameObject {
   speed: number;
   damage: number;
   lastHitTimestamp: number;
+  animationDirection: EnemyAnimationDirection;
+  animationFrame: number;
+  lastAnimationUpdate: number;
 }
 
 export interface Projectile extends GameObject {
@@ -91,6 +103,10 @@ export interface Projectile extends GameObject {
 }
 
 export interface ExperienceOrb extends GameObject {
+  value: number;
+}
+
+export interface ZenitOrb extends GameObject {
   value: number;
 }
 
@@ -166,8 +182,20 @@ export interface CharacterData {
     initialWeaponId?: string;
     heroicGaugeMax: number;
     heroicSkillDuration: number; // in ms
+    spriteSheet: string;
+    frameWidth: number;
+    frameHeight: number;
+}
+
+export type UpgradeId = 'revive' | 'duplicator' | 'speed' | 'projSpeed' | 'damage';
+
+export interface UpgradeInfo {
+    level: number;
+    active: boolean;
 }
 
 export interface SaveData {
   bestTimes: Record<string, number>; // characterId -> time in seconds
+  zenit: number;
+  upgrades: Record<UpgradeId, UpgradeInfo>;
 }
